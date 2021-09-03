@@ -47,7 +47,7 @@ func pathRolesDynamicBuild(b *backend) []*framework.Path {
 					Description: "Name of policy or policies that this role should belong. To specify multiple policies repeat the policy=<policy_name> key value pair.",
 				},
 				fieldPathRolesDynamicTag: {
-					Type:        framework.TypeStringSlice,
+					Type:        framework.TypeKVPairs,
 					Description: "Tags to apply to a user in the format tag=key=value pair. To specify multiple tags, repeat the tag=key=value pair.",
 				},
 				fieldPathRolesDynamicTTL: {
@@ -102,14 +102,7 @@ func (b *backend) pathRolesDynamicWrite(ctx context.Context, req *logical.Reques
 	}
 	tags, ok := data.GetOk(fieldPathRolesDynamicTag)
 	if ok {
-		for _, kvPair := range tags.([]string) {
-			kvSlice := strings.SplitN(kvPair, "=", 2)
-			if len(kvSlice) != 2 {
-				validationErrors = append(validationErrors, "Unable to parse key value pair: "+kvPair)
-			} else {
-				role.Tags[kvSlice[0]] = kv_slice[1]
-			}
-		}
+    role.Tags = tags.(map[string]string)
 	}
 	TTLDuration, ok := data.GetOk(fieldPathRolesDynamicTTL)
 	if ok {
