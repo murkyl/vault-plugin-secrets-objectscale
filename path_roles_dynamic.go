@@ -102,7 +102,7 @@ func (b *backend) pathRolesDynamicWrite(ctx context.Context, req *logical.Reques
 	}
 	tags, ok := data.GetOk(fieldPathRolesDynamicTag)
 	if ok {
-    role.Tags = tags.(map[string]string)
+		role.Tags = tags.(map[string]string)
 	}
 	TTLDuration, ok := data.GetOk(fieldPathRolesDynamicTTL)
 	if ok {
