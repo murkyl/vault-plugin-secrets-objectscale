@@ -44,6 +44,7 @@ func pathCredsDynamicBuild(b *backend) []*framework.Path {
 // Returns
 // access_key is a text string of the access ID
 // secret_key is a text string of the access ID secret
+// secret_token
 // key_expiry is the expiration time of the access ID and secret given in UNIX epoch timestamp seconds.
 func (b *backend) pathCredsDynamicRead(ctx context.Context, req *logical.Request, data *framework.FieldData) (*logical.Response, error) {
 	roleName := data.Get(fieldPathCredsDynamicName).(string)
@@ -74,7 +75,7 @@ func (b *backend) pathCredsDynamicRead(ctx context.Context, req *logical.Request
 		TTLMinutes = TTLSeconds // The TTL should be 0 or -1 which results in an infinite lease
 	}
 
-	// Generate username
+	// Generate userName
 	// If there is a TTL > 0 then the format of the user name has 4 parts:
 	// Username prefix, random string, first 4 digits of Vault request UUID, and the expiration time
 	// If the TTL is 0 or -1 (no TTL), the format has 5 parts:
@@ -89,7 +90,7 @@ func (b *backend) pathCredsDynamicRead(ctx context.Context, req *logical.Request
 		credTime = credTime.Add(time.Duration(TTLMinutes*TTLTimeUnit) * time.Second)
 		credTimeString = defaultPathCredsDynamicExpireSprintf
 	}
-	username := fmt.Sprintf(credTimeString, cfg.UsernamePrefix, randString, req.ID[0:4], credTime.Format(defaultPathCredsDynamicTimeFormat))
+	userName := fmt.Sprintf(credTimeString, cfg.UsernamePrefix, randString, req.ID[0:4], credTime.Format(defaultPathCredsDynamicTimeFormat))
 
 	// Create the user
 	qParams := oslite.ObjectScaleQueryParams{}
@@ -99,49 +100,40 @@ func (b *backend) pathCredsDynamicRead(ctx context.Context, req *logical.Request
 	if len(role.Tags) > 0 {
 		qParams.Tags = role.Tags
 	}
-	_, err = b.Conn.CreateIAMUser(role.Namespace, username, &qParams)
+	_, err = b.Conn.CreateIAMUser(role.Namespace, userName, &qParams)
 	if err != nil {
 		return nil, fmt.Errorf("Error creating user: %s", err)
 	}
 	// Update user with group memberships from the role
 	for _, groupName := range role.Groups {
-		_, err = b.Conn.AddIAMUserToGroup(role.Namespace, username, groupName)
+		_, err = b.Conn.AddIAMUserToGroup(role.Namespace, userName, groupName)
 		if err != nil {
+			b.Conn.DeleteIAMUserForce(role.Namespace, userName)
 			return nil, fmt.Errorf("Error setting user's groups: %s", err)
 		}
 	}
 	// Update the user with policies from the role
 	for _, policyName := range role.Policies {
-		_, err = b.Conn.AttachIAMUserPolicy(role.Namespace, username, policyName)
+		_, err = b.Conn.AttachIAMUserPolicy(role.Namespace, userName, policyName)
 		if err != nil {
+			b.Conn.DeleteIAMUserForce(role.Namespace, userName)
 			return nil, fmt.Errorf("Error setting user's policies: %s", err)
 		}
 	}
-	/*
-		// Get the S3 access ID and secret key
-		token, err := b.Conn.PapiGetS3Token(username, role.AccessZone, 0)
-		if err != nil {
-			return nil, fmt.Errorf("Unable to get S3 token for user %s: %s", username, err)
-		}
-		// Fill a key value struct with the stored values
-		kv := map[string]interface{}{
-			"access_key": token.AccessID,
-			"secret_key": token.SecretKey,
-			"key_expiry": 0, // 0 represents no expiration
-		}
-		// To have a token automatically expire, you need to create a second token and set the expiration duration of the previous token
-		if TTLMinutes > 0 {
-			token2, err := b.Conn.PapiGetS3Token(username, role.AccessZone, TTLMinutes)
-			if err != nil {
-				return nil, fmt.Errorf("Unable to get the second S3 token for user %s: %s", username, err)
-			}
-			kv["key_expiry"] = token2.OldKeyExpiry
-		}
-	*/
+	// Get the credentials
+	creds, err := b.Conn.CreateIAMAccessKey(role.Namespace, userName)
+	if err != nil {
+		b.Conn.DeleteIAMUserForce(role.Namespace, userName)
+		return nil, fmt.Errorf("Error getting access key for user %s: %s", userName, err)
+	}
 	kv := map[string]interface{}{
-		"access_key": "fake key",
-		"secret_key": "secret key",
-		"key_expiry": 0, // 0 represents no expiration
+		"access_key":     creds.AccessKeyID,
+		"secret_key":     creds.SecretAccessKey,
+		"security_token": nil,
+		"key_expiry":     0, // 0 represents no expiration
+	}
+	if TTLMinutes > 0 {
+		kv["key_expiry"] = time.Now().Add(time.Duration(TTLMinutes) * time.Minute).Unix()
 	}
 	res := &logical.Response{Data: kv}
 	return res, nil
