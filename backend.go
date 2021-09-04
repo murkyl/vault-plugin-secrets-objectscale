@@ -6,7 +6,7 @@ import (
 	"github.com/hashicorp/vault/sdk/framework"
 	"github.com/hashicorp/vault/sdk/logical"
 	oslite "github.com/murkyl/go-objectscale-lite"
-	//"regexp"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -45,6 +45,7 @@ func Factory(ctx context.Context, cfg *logical.BackendConfig) (logical.Backend, 
 		Help:        strings.TrimSpace(backendHelp),
 		Paths: framework.PathAppend(
 			pathConfigBuild(b),
+			pathRolesDynamicList(b),
 			pathRolesDynamicBuild(b),
 			//pathRolesPredefinedBuild(b),
 			pathCredsDynamicBuild(b),
@@ -96,9 +97,49 @@ func (b *backend) pluginPeriod(ctx context.Context, req *logical.Request) error 
 	cleanupTime := b.LastCleanup.Add(time.Second * time.Duration(cfg.CleanupPeriod))
 	curTime := time.Now()
 	if curTime.After(cleanupTime) {
-		//rex := regexp.MustCompile(fmt.Sprintf(defaultUserRegexp, cfg.UsernamePrefix))
-		// TODO: Need to look through all the namespaces in all configured roles, find all users that match our dynamic user name format and
+		// Look through all the namespaces in all configured roles, find all users that match our dynamic user name format and
 		// clean them up as necessary
+		configuredRoles, err := req.Storage.List(ctx, apiPathRolesDynamic)
+		if err != nil {
+			return err
+		}
+		rex := regexp.MustCompile(fmt.Sprintf(defaultUserRegexp, cfg.UsernamePrefix))
+		// Get all the active namespaces
+		namespaces := map[string]bool {}
+		for _, role := range configuredRoles {
+			roleData, err := getDynamicRoleFromStorage(ctx, req.Storage, role)
+			if err != nil || roleData == nil {
+        b.Logger().Error("[pluginPeriod] Unable to get role information for role %s: %s", role, err)
+        continue
+			}
+			namespaces[roleData.Namespace] = true
+		}
+		// Get a list of all users in the namespace
+		for ns, _ := range namespaces {
+			userList, err := b.Conn.ListIAMUsers(ns, nil)
+			if err != nil {
+        b.Logger().Error("[pluginPeriod] Unable to list users in namespace %s: %s", ns, err)
+				continue
+			}
+			for _, user := range userList.Users {
+				result := rex.FindAllStringSubmatch(user.UserName, -1)
+				if result != nil {
+					// If the user name matches, we need to parse the expiration timestamp from the user name and compare it to the current time
+					expireTime, err := time.ParseInLocation(defaultPathCredsDynamicTimeFormat, result[0][1], time.Local)
+					if err != nil {
+						b.Logger().Error("[pluginPeriod] Unable to parse expiration time for user %s: %s", user.UserName, err)
+						continue
+					}
+					// If expireTime is earlier than our current time then this user has expired
+					if expireTime.Before(curTime) {
+						_, err := b.Conn.DeleteIAMUserForce(ns, user.UserName)
+						if err != nil {
+							b.Logger().Error(fmt.Sprintf("[pluginPeriod] Unable to delete user %s for namespace %s: %v", user.UserName, ns, err))
+						}
+					}
+				}
+			}
+		}
 		// TODO: We should increment a multiple of LastCleanup. Just using the current time can lead to cleanup time drift.
 		b.LastCleanup = curTime
 	}
