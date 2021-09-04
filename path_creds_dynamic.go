@@ -10,7 +10,7 @@ import (
 )
 
 const (
-	apiPathCredsDynamic                  string = "creds/dynamic"
+	apiPathCredsDynamic                  string = "creds/dynamic/"
 	defaultPathCredsDynamicRandomLength  int    = 6
 	defaultPathCredsDynamicTimeFormat    string = "20060102150405"
 	defaultPathCredsDynamicExpireSprintf string = "%s_%s_%s_%s"
@@ -22,7 +22,7 @@ const (
 func pathCredsDynamicBuild(b *backend) []*framework.Path {
 	return []*framework.Path{
 		{
-			Pattern: apiPathCredsDynamic + "/" + framework.GenericNameRegex(fieldPathCredsDynamicName),
+			Pattern: apiPathCredsDynamic + framework.GenericNameRegex(fieldPathCredsDynamicName),
 			Fields: map[string]*framework.FieldSchema{
 				fieldPathCredsDynamicName: {
 					Type:        framework.TypeString,
