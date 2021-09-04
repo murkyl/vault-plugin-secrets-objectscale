@@ -10,8 +10,8 @@ import (
 )
 
 const (
-  pathRolesDynamicHelpSynopsis = "List the configured backend roles"
-  pathRolesDynamicHelpDescription = `
+	pathRolesDynamicHelpSynopsis    = "List the configured backend roles"
+	pathRolesDynamicHelpDescription = `
 This endpoint returns a list of all the configured backend roles
 `
 )
@@ -83,18 +83,18 @@ func pathRolesDynamicList(b *backend) []*framework.Path {
 			Operations: map[logical.Operation]framework.OperationHandler{
 				logical.ListOperation: &framework.PathOperation{Callback: b.pathRolesDynamicList},
 			},
-      HelpSynopsis: pathRolesDynamicHelpSynopsis,
-      HelpDescription: pathRolesDynamicHelpDescription,
+			HelpSynopsis:    pathRolesDynamicHelpSynopsis,
+			HelpDescription: pathRolesDynamicHelpDescription,
 		},
 	}
 }
 
 func (b *backend) pathRolesDynamicList(ctx context.Context, req *logical.Request, _ *framework.FieldData) (*logical.Response, error) {
-  roleList, err := req.Storage.List(ctx, apiPathRolesDynamic)
-  if err != nil {
-    return nil, err
-  }
-  return logical.ListResponse(roleList), nil
+	roleList, err := req.Storage.List(ctx, apiPathRolesDynamic)
+	if err != nil {
+		return nil, err
+	}
+	return logical.ListResponse(roleList), nil
 }
 
 func (b *backend) pathRolesDynamicWrite(ctx context.Context, req *logical.Request, data *framework.FieldData) (*logical.Response, error) {
@@ -196,7 +196,7 @@ func (b *backend) pathRolesDynamicDelete(ctx context.Context, req *logical.Reque
 	if roleName == "" {
 		return logical.ErrorResponse("Unable to parse role name"), nil
 	}
-	if err := req.Storage.Delete(ctx, apiPathRolesDynamic + roleName); err != nil {
+	if err := req.Storage.Delete(ctx, apiPathRolesDynamic+roleName); err != nil {
 		return nil, err
 	}
 	return nil, nil
@@ -204,7 +204,7 @@ func (b *backend) pathRolesDynamicDelete(ctx context.Context, req *logical.Reque
 
 // getDynamicRoleFromStorage retrieves a roles configuration from the API backend server and returns it in a iamRole struct
 func getDynamicRoleFromStorage(ctx context.Context, s logical.Storage, roleName string) (*iamRole, error) {
-	data, err := s.Get(ctx, apiPathRolesDynamic + roleName)
+	data, err := s.Get(ctx, apiPathRolesDynamic+roleName)
 	if err != nil {
 		return nil, err
 	}

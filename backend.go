@@ -105,12 +105,12 @@ func (b *backend) pluginPeriod(ctx context.Context, req *logical.Request) error 
 		}
 		rex := regexp.MustCompile(fmt.Sprintf(defaultUserRegexp, cfg.UsernamePrefix))
 		// Get all the active namespaces
-		namespaces := map[string]bool {}
+		namespaces := map[string]bool{}
 		for _, role := range configuredRoles {
 			roleData, err := getDynamicRoleFromStorage(ctx, req.Storage, role)
 			if err != nil || roleData == nil {
-        b.Logger().Error("[pluginPeriod] Unable to get role information for role %s: %s", role, err)
-        continue
+				b.Logger().Error("[pluginPeriod] Unable to get role information for role %s: %s", role, err)
+				continue
 			}
 			namespaces[roleData.Namespace] = true
 		}
@@ -118,7 +118,7 @@ func (b *backend) pluginPeriod(ctx context.Context, req *logical.Request) error 
 		for ns, _ := range namespaces {
 			userList, err := b.Conn.ListIAMUsers(ns, nil)
 			if err != nil {
-        b.Logger().Error("[pluginPeriod] Unable to list users in namespace %s: %s", ns, err)
+				b.Logger().Error("[pluginPeriod] Unable to list users in namespace %s: %s", ns, err)
 				continue
 			}
 			for _, user := range userList.Users {
