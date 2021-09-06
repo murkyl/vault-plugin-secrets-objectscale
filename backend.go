@@ -20,7 +20,7 @@ const defaultUserRegexp string = "^%s_[^_]+_[^_]+_(?P<TimeStamp>[0-9]{14})$"
 type backend struct {
 	*framework.Backend
 	Conn        *oslite.ObjectScaleConn
-	LastCleanup time.Time
+	NextCleanup time.Time
 }
 
 type backendCfg struct {
@@ -39,7 +39,6 @@ var _ logical.Factory = Factory
 // Factory returns a Hashicorp Vault secrets backend object
 func Factory(ctx context.Context, cfg *logical.BackendConfig) (logical.Backend, error) {
 	b := &backend{}
-	b.LastCleanup = time.Now()
 	b.Backend = &framework.Backend{
 		BackendType: logical.TypeLogical,
 		Help:        strings.TrimSpace(backendHelp),
@@ -81,6 +80,10 @@ func (b *backend) pluginInit(ctx context.Context, req *logical.InitializationReq
 	if err != nil {
 		b.Logger().Info(fmt.Sprintf("Unable to connect to endpoint during plugin creation: %s", err))
 	}
+	b.NextCleanup = time.Now().Round(time.Second * time.Duration(cfg.CleanupPeriod))
+	if b.NextCleanup.Before(time.Now()) {
+		b.NextCleanup = b.NextCleanup.Add(time.Second * time.Duration(cfg.CleanupPeriod))
+	}
 	return nil
 }
 
@@ -93,29 +96,20 @@ func (b *backend) pluginPeriod(ctx context.Context, req *logical.Request) error 
 	if cfg.CleanupPeriod <= 0 {
 		return nil
 	}
-	// Use the stored last cleanup time and only after the configured cleanup time is exceeded do we query all users and perform cleanup
-	cleanupTime := b.LastCleanup.Add(time.Second * time.Duration(cfg.CleanupPeriod))
 	curTime := time.Now()
-	if curTime.After(cleanupTime) {
-		// Look through all the namespaces in all configured roles, find all users that match our dynamic user name format and
-		// clean them up as necessary
-		configuredRoles, err := req.Storage.List(ctx, apiPathRolesDynamic)
+	if curTime.After(b.NextCleanup) {
+		// We purposely update the next cleanup time immediately in case a cleanup error occurs. This will prevent
+		// cleanup from running each time pluginPeriod is called
+		timeDiff := time.Now().Sub(b.NextCleanup).Truncate(time.Second * cfg.CleanupPeriod)
+		b.NextCleanup = b.NextCleanup.Add(timeDiff).Add(time.Second * cfg.CleanupPeriod)
+
+		rex := regexp.MustCompile(fmt.Sprintf(defaultUserRegexp, cfg.UsernamePrefix))
+		namespaces, err := getActiveNamespacesFromRoles(ctx, req, cfg.UsernamePrefix)
 		if err != nil {
 			return err
 		}
-		rex := regexp.MustCompile(fmt.Sprintf(defaultUserRegexp, cfg.UsernamePrefix))
-		// Get all the active namespaces
-		namespaces := map[string]bool{}
-		for _, role := range configuredRoles {
-			roleData, err := getDynamicRoleFromStorage(ctx, req.Storage, role)
-			if err != nil || roleData == nil {
-				b.Logger().Error("[pluginPeriod] Unable to get role information for role %s: %s", role, err)
-				continue
-			}
-			namespaces[roleData.Namespace] = true
-		}
 		// Get a list of all users in the namespace
-		for ns, _ := range namespaces {
+		for ns := range namespaces {
 			userList, err := b.Conn.ListIAMUsers(ns, nil)
 			if err != nil {
 				b.Logger().Error("[pluginPeriod] Unable to list users in namespace %s: %s", ns, err)
@@ -140,8 +134,6 @@ func (b *backend) pluginPeriod(ctx context.Context, req *logical.Request) error 
 				}
 			}
 		}
-		// TODO: We should increment a multiple of LastCleanup. Just using the current time can lead to cleanup time drift.
-		b.LastCleanup = curTime
 	}
 	return nil
 }
@@ -150,4 +142,24 @@ func (b *backend) pluginCleanup(ctx context.Context) {
 	if b.Conn != nil {
 		b.Conn.Disconnect()
 	}
+}
+
+// getActiveNamespacesFromRoles searches all configured roles and returns a list of access zones that have users
+// configured
+func (b *backend) getActiveNamespacesFromRoles(ctx context.Context, req *logical.Request, userNamePrefix string) (map[string]bool, error) {
+	configuredRoles, err := req.Storage.List(ctx, apiPathRolesDynamic)
+	if err != nil {
+		return nil, err
+	}
+	// Get all the active namespaces
+	namespaces := map[string]bool{}
+	for _, role := range configuredRoles {
+		roleData, err := getDynamicRoleFromStorage(ctx, req.Storage, role)
+		if err != nil || roleData == nil {
+			b.Logger().Error("[getActiveNamespacesFromRoles] Unable to get role information for role %s: %s", role, err)
+			continue
+		}
+		namespaces[roleData.Namespace] = true
+	}
+	return namespaces, nil
 }

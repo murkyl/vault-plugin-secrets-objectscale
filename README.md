@@ -1,3 +1,4 @@
+
 # ObjectScale secrets plugin for Hashicorp Vault
 This plug in will manage IAM dynamic access key ID and secrets for accessing ObjectScale S3 buckets.
 
@@ -116,7 +117,7 @@ By default the plugin will provide an access token and secret that has an expira
 
 If a credential with an unlimited duration is requested the user name will be in the format `vault_4xzkHE_7090_INF_20210826133755`. The extra string `INF` is added before the timestamp. The timestamp in this situation represents the time the credential was created instead of when it will expire.
 
-The dynamically generated users will periodically be cleaned up by the plugin. The frequency that this occurs is determined by the `cleanup_period` option. The default is 600 seconds (10 minutes). Credentials that expire in between the cleanup periods will not be deleted until the next cleanup period occurs. The cleanup period is not exact but is an approximate time.
+The dynamically generated users will periodically be cleaned up by the plugin. The frequency that this occurs is determined by the `cleanup_period` option. The default is 600 seconds (10 minutes). Credentials that expire in between the cleanup periods will not be deleted until the next cleanup period occurs. A cleanup period check happens every minute from when the plugin is enabled. Internally the cleanup schedule is fixed at an interval of the cleanup period. For an example, if the plugin is started at 09:28, then the next cleanup periods will be 09:30, 09:40, 09:50, etc. If the cleanup period is 1 hour and the plugin is started at 09:28, the next cleanup will occur at 10:00, 11:00, 12:00, etc.
 
 ## Predefined mode usage
 Normal use involves creating roles that represent a user's user name and then automatically expiring access key and secrets.
