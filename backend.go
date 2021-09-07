@@ -100,8 +100,8 @@ func (b *backend) pluginPeriod(ctx context.Context, req *logical.Request) error 
 	if curTime.After(b.NextCleanup) {
 		// We purposely update the next cleanup time immediately in case a cleanup error occurs. This will prevent
 		// cleanup from running each time pluginPeriod is called
-		timeDiff := time.Now().Sub(b.NextCleanup).Truncate(time.Second * cfg.CleanupPeriod)
-		b.NextCleanup = b.NextCleanup.Add(timeDiff).Add(time.Second * cfg.CleanupPeriod)
+		timeDiff := time.Now().Sub(b.NextCleanup).Truncate(time.Second * time.Duration(cfg.CleanupPeriod))
+		b.NextCleanup = b.NextCleanup.Add(timeDiff).Add(time.Second * time.Duration(cfg.CleanupPeriod))
 
 		rex := regexp.MustCompile(fmt.Sprintf(defaultUserRegexp, cfg.UsernamePrefix))
 		namespaces, err := getActiveNamespacesFromRoles(ctx, req, cfg.UsernamePrefix)
