@@ -1,7 +1,7 @@
 GOARCH = amd64
 UNAME = $(shell uname -s)
 PLUGIN_NAME = vault-plugin-secrets-objectscale
-ACCESS_PATH = onefs
+ACCESS_PATH = objectscale
 
 ifndef OS
 	ifeq ($(UNAME), Linux)
