@@ -9,9 +9,13 @@ import (
 )
 
 const (
-	apiPathCredsPredefined       string = "creds/predefined/"
-	fieldPathCredsPredefinedName string = "name"
-	fieldPathCredsPredefinedTTL  string = "ttl"
+	apiPathCredsPredefined                string = "creds/predefined/"
+	fieldPathCredsPredefinedAccessKey     string = "access_key"
+	fieldPathCredsPredefinedKeyExpiry     string = "key_expiry"
+	fieldPathCredsPredefinedName          string = "name"
+	fieldPathCredsPredefinedSecretKey     string = "secret_key"
+	fieldPathCredsPredefinedSecurityToken string = "security_token"
+	fieldPathCredsPredefinedTTL           string = "ttl"
 )
 
 func pathCredsPredefinedBuild(b *backend) []*framework.Path {
@@ -73,7 +77,7 @@ func (b *backend) pathCredsPredefinedRead(ctx context.Context, req *logical.Requ
 	// Remove any existing credentials
 	err = b.Conn.DeleteIAMAccessKeyAll(role.Namespace, userName)
 	if err != nil {
-		b.Logger().Info(fmt.Sprintf("Unable to clean up all keys: %v", err))
+		b.Logger().Error(fmt.Sprintf("Unable to clean up all keys: %v", err))
 	}
 
 	// Get new credentials
@@ -83,13 +87,22 @@ func (b *backend) pathCredsPredefinedRead(ctx context.Context, req *logical.Requ
 		return nil, fmt.Errorf("Error getting access key for user %s: %s", userName, err)
 	}
 	kv := map[string]interface{}{
-		"access_key":     creds.AccessKeyID,
-		"secret_key":     creds.SecretAccessKey,
-		"security_token": nil,
-		"key_expiry":     0, // 0 represents no expiration
+		fieldPathCredsPredefinedAccessKey:     creds.AccessKeyID,
+		fieldPathCredsPredefinedSecretKey:     creds.SecretAccessKey,
+		fieldPathCredsPredefinedSecurityToken: nil,
+		fieldPathCredsPredefinedKeyExpiry:     0, // 0 represents no expiration
 	}
 	if TTLMinutes > 0 {
-		kv["key_expiry"] = time.Now().Add(time.Duration(TTLMinutes) * time.Minute).Unix()
+		kv[fieldPathCredsPredefinedKeyExpiry] = time.Now().Add(time.Duration(TTLMinutes) * time.Minute).Unix()
+	}
+	// Save this roles secret expiration to the role itself and store it back to Vault
+	role.SecretExpiration = kv[fieldPathCredsPredefinedKeyExpiry].(int64)
+	// Write role into Vault storage
+	if err = setPredefinedRoleToStorage(ctx, req.Storage, userName, role); err != nil {
+		return nil, err
+	}
+	if err = b.addCleanupEntry(kv[fieldPathCredsPredefinedKeyExpiry].(int64), role.Namespace, userName); err != nil {
+		return nil, err
 	}
 	res := &logical.Response{Data: kv}
 	return res, nil

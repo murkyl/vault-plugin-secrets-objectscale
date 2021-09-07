@@ -15,7 +15,11 @@ const (
 	defaultPathCredsDynamicTimeFormat    string = "20060102150405"
 	defaultPathCredsDynamicExpireSprintf string = "%s_%s_%s_%s"
 	defaultPathCredsDynamicInfSprintf    string = "%s_%s_%s_INF_%s"
+	fieldPathCredsDynamicAccessKey       string = "access_key"
+	fieldPathCredsDynamicKeyExpiry       string = "key_expiry"
 	fieldPathCredsDynamicName            string = "name"
+	fieldPathCredsDynamicSecretKey       string = "secret_key"
+	fieldPathCredsDynamicSecurityToken   string = "security_token"
 	fieldPathCredsDynamicTTL             string = "ttl"
 )
 
@@ -127,13 +131,13 @@ func (b *backend) pathCredsDynamicRead(ctx context.Context, req *logical.Request
 		return nil, fmt.Errorf("Error getting access key for user %s: %s", userName, err)
 	}
 	kv := map[string]interface{}{
-		"access_key":     creds.AccessKeyID,
-		"secret_key":     creds.SecretAccessKey,
-		"security_token": nil,
-		"key_expiry":     0, // 0 represents no expiration
+		fieldPathCredsDynamicAccessKey:     creds.AccessKeyID,
+		fieldPathCredsDynamicSecretKey:     creds.SecretAccessKey,
+		fieldPathCredsDynamicSecurityToken: nil,
+		fieldPathCredsDynamicKeyExpiry:     0, // 0 represents no expiration
 	}
 	if TTLMinutes > 0 {
-		kv["key_expiry"] = time.Now().Add(time.Duration(TTLMinutes) * time.Minute).Unix()
+		kv[fieldPathCredsDynamicKeyExpiry] = time.Now().Add(time.Duration(TTLMinutes) * time.Minute).Unix()
 	}
 	res := &logical.Response{Data: kv}
 	return res, nil

@@ -17,11 +17,12 @@ This endpoint returns a list of all the configured backend roles
 )
 
 const (
-	apiPathRolesPredefined            string = "roles/predefined/"
-	fieldPathRolesPredefinedName      string = "name"
-	fieldPathRolesPredefinedNamespace string = "namespace"
-	fieldPathRolesPredefinedTTL       string = "ttl"
-	fieldPathRolesPredefinedTTLMax    string = "ttl_max"
+	apiPathRolesPredefined                 string = "roles/predefined/"
+	fieldPathRolesPredefinedExpiringSecret string = "expiring_secret"
+	fieldPathRolesPredefinedName           string = "name"
+	fieldPathRolesPredefinedNamespace      string = "namespace"
+	fieldPathRolesPredefinedTTL            string = "ttl"
+	fieldPathRolesPredefinedTTLMax         string = "ttl_max"
 )
 
 func pathRolesPredefinedBuild(b *backend) []*framework.Path {
@@ -118,15 +119,8 @@ func (b *backend) pathRolesPredefinedWrite(ctx context.Context, req *logical.Req
 	if len(validationErrors) > 0 {
 		return nil, fmt.Errorf("Validation errors for role/user: %s\n%s", userName, strings.Join(validationErrors[:], "\n"))
 	}
-	// Format and store data on the backend server
-	entry, err := logical.StorageEntryJSON((apiPathRolesPredefined + userName), role)
-	if err != nil {
-		return nil, err
-	}
-	if entry == nil {
-		return nil, fmt.Errorf("Unable to create storage object for role: %s", userName)
-	}
-	if err = req.Storage.Put(ctx, entry); err != nil {
+	// Write role into Vault storage
+	if err = setPredefinedRoleToStorage(ctx, req.Storage, userName, role); err != nil {
 		return nil, err
 	}
 	return nil, nil
@@ -143,9 +137,10 @@ func (b *backend) pathRolesPredefinedRead(ctx context.Context, req *logical.Requ
 	}
 	// Fill a key value struct with the stored values
 	kv := map[string]interface{}{
-		fieldPathRolesPredefinedNamespace: role.Namespace,
-		fieldPathRolesPredefinedTTL:       role.TTL,
-		fieldPathRolesPredefinedTTLMax:    role.TTLMax,
+		fieldPathRolesPredefinedNamespace:      role.Namespace,
+		fieldPathRolesPredefinedExpiringSecret: role.SecretExpiration,
+		fieldPathRolesPredefinedTTL:            role.TTL,
+		fieldPathRolesPredefinedTTLMax:         role.TTLMax,
 	}
 	return &logical.Response{Data: kv}, nil
 }
@@ -176,4 +171,30 @@ func getPredefinedRoleFromStorage(ctx context.Context, s logical.Storage, userNa
 		return nil, err
 	}
 	return role, nil
+}
+
+// setPredefinedRoleToStorage writes a roles configuration to the API backend server
+func setPredefinedRoleToStorage(ctx context.Context, s logical.Storage, userName string, role *iamRole) error {
+	// Format and store data on the backend server
+	entry, err := logical.StorageEntryJSON((apiPathRolesPredefined + userName), role)
+	if err != nil {
+		return err
+	}
+	if entry == nil {
+		return fmt.Errorf("Unable to create storage object for role: %s", userName)
+	}
+	if err = s.Put(ctx, entry); err != nil {
+		return err
+	}
+	return nil
+}
+
+// clearPredefinedRoleExpiration reads the role for a particular user, clears the secret expiration field, and writes the result back to storage
+func clearPredefinedRoleExpiration(ctx context.Context, s logical.Storage, userName string) error {
+	role, err := getPredefinedRoleFromStorage(ctx, s, userName)
+	if err != nil {
+		return err
+	}
+	role.SecretExpiration = 0
+	return setPredefinedRoleToStorage(ctx, s, userName, role)
 }

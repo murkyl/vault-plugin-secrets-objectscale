@@ -7,6 +7,7 @@ import (
 	"github.com/hashicorp/vault/sdk/logical"
 	oslite "github.com/murkyl/go-objectscale-lite"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 )
@@ -19,6 +20,7 @@ const defaultUserRegexp string = "^%s_[^_]+_[^_]+_(?P<TimeStamp>[0-9]{14})$"
 
 type backend struct {
 	*framework.Backend
+	CleanupList []cleanupEntry
 	Conn        *oslite.ObjectScaleConn
 	NextCleanup time.Time
 }
@@ -32,6 +34,12 @@ type backendCfg struct {
 	TTLMax         int
 	User           string
 	UsernamePrefix string
+}
+
+type cleanupEntry struct {
+	Expiration int64
+	Namespace  string
+	UserName   string
 }
 
 var _ logical.Factory = Factory
@@ -55,7 +63,7 @@ func Factory(ctx context.Context, cfg *logical.BackendConfig) (logical.Backend, 
 		Clean:          b.pluginCleanup,
 	}
 	if err := b.Setup(ctx, cfg); err != nil {
-		b.Logger().Info(fmt.Sprintf("Error during setup: %s", err))
+		b.Logger().Error(fmt.Sprintf("Error during setup: %s", err))
 		return nil, err
 	}
 	return b, nil
@@ -97,6 +105,7 @@ func (b *backend) pluginPeriod(ctx context.Context, req *logical.Request) error 
 		return nil
 	}
 	curTime := time.Now()
+	// Check dynamic user expiration
 	if curTime.After(b.NextCleanup) {
 		// We purposely update the next cleanup time immediately in case a cleanup error occurs. This will prevent
 		// cleanup from running each time pluginPeriod is called
@@ -106,34 +115,56 @@ func (b *backend) pluginPeriod(ctx context.Context, req *logical.Request) error 
 		rex := regexp.MustCompile(fmt.Sprintf(defaultUserRegexp, cfg.UsernamePrefix))
 		namespaces, err := b.getActiveNamespacesFromRoles(ctx, req, cfg.UsernamePrefix)
 		if err != nil {
-			return err
-		}
-		// Get a list of all users in the namespace
-		for ns := range namespaces {
-			userList, err := b.Conn.ListIAMUsers(ns, nil)
-			if err != nil {
-				b.Logger().Error("[pluginPeriod] Unable to list users in namespace %s: %s", ns, err)
-				continue
-			}
-			for _, user := range userList.Users {
-				result := rex.FindAllStringSubmatch(user.UserName, -1)
-				if result != nil {
-					// If the user name matches, we need to parse the expiration timestamp from the user name and compare it to the current time
-					expireTime, err := time.ParseInLocation(defaultPathCredsDynamicTimeFormat, result[0][1], time.Local)
-					if err != nil {
-						b.Logger().Error("[pluginPeriod] Unable to parse expiration time for user %s: %s", user.UserName, err)
-						continue
-					}
-					// If expireTime is earlier than our current time then this user has expired
-					if expireTime.Before(curTime) {
-						_, err := b.Conn.DeleteIAMUserForce(ns, user.UserName)
+			b.Logger().Error(fmt.Sprintf("[pluginPeriod] Unable to get active namespaces"))
+		} else {
+			// Get a list of all users in the namespace
+			for ns := range namespaces {
+				userList, err := b.Conn.ListIAMUsers(ns, nil)
+				if err != nil {
+					b.Logger().Error("[pluginPeriod] Unable to list users in namespace %s: %s", ns, err)
+					continue
+				}
+				for _, user := range userList.Users {
+					result := rex.FindAllStringSubmatch(user.UserName, -1)
+					if result != nil {
+						// If the user name matches, we need to parse the expiration timestamp from the user name and compare it to the current time
+						expireTime, err := time.ParseInLocation(defaultPathCredsDynamicTimeFormat, result[0][1], time.Local)
 						if err != nil {
-							b.Logger().Error(fmt.Sprintf("[pluginPeriod] Unable to delete user %s for namespace %s: %v", user.UserName, ns, err))
+							b.Logger().Error("[pluginPeriod] Unable to parse expiration time for user %s: %s", user.UserName, err)
+							continue
+						}
+						// If expireTime is earlier than our current time then this user has expired
+						if expireTime.Before(curTime) {
+							_, err := b.Conn.DeleteIAMUserForce(ns, user.UserName)
+							if err != nil {
+								b.Logger().Error(fmt.Sprintf("[pluginPeriod] Unable to delete user %s for namespace %s: %v", user.UserName, ns, err))
+							}
 						}
 					}
 				}
 			}
 		}
+	}
+	// Check predefined user expiration
+	curUnixTime := curTime.Unix()
+	cutoff := -1
+	for i, entry := range b.CleanupList {
+		if entry.Expiration < curUnixTime {
+			// One of the entries in the predefined cleanup list has expired
+			cutoff = i
+			err = b.Conn.DeleteIAMAccessKeyAll(entry.Namespace, entry.UserName)
+			if err != nil {
+				b.Logger().Error(fmt.Sprintf("Unable to clean up key for %s:%s", entry.Namespace, entry.UserName))
+			}
+			clearPredefinedRoleExpiration(ctx, req.Storage, entry.UserName)
+		} else {
+			break
+		}
+	}
+	if cutoff != -1 {
+		// Trim the cleanup list
+		var newList []cleanupEntry
+		b.CleanupList = append(newList, b.CleanupList[cutoff+1:]...)
 	}
 	return nil
 }
@@ -162,4 +193,14 @@ func (b *backend) getActiveNamespacesFromRoles(ctx context.Context, req *logical
 		namespaces[roleData.Namespace] = true
 	}
 	return namespaces, nil
+}
+
+func (b *backend) addCleanupEntry(expiration int64, namespace string, userName string) error {
+	b.CleanupList = append(b.CleanupList, cleanupEntry{
+		Expiration: expiration,
+		Namespace:  namespace,
+		UserName:   userName,
+	})
+	sort.Slice(b.CleanupList, func(i, j int) bool { return b.CleanupList[i].Expiration < b.CleanupList[j].Expiration })
+	return nil
 }

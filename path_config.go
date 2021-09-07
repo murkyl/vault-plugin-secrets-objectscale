@@ -25,13 +25,14 @@ const (
 )
 
 type iamRole struct {
-	Boundary  string
-	Groups    []string
-	Namespace string
-	Policies  []string
-	Tags      map[string]string
-	TTL       int
-	TTLMax    int
+	Boundary         string
+	Groups           []string
+	Namespace        string
+	Policies         []string
+	SecretExpiration int64 `json:"omitempty"`
+	Tags             map[string]string
+	TTL              int
+	TTLMax           int
 }
 
 func pathConfigBuild(b *backend) []*framework.Path {
