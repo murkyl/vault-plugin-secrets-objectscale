@@ -196,11 +196,20 @@ func (b *backend) getActiveNamespacesFromRoles(ctx context.Context, req *logical
 }
 
 func (b *backend) addCleanupEntry(expiration int64, namespace string, userName string) error {
-	b.CleanupList = append(b.CleanupList, cleanupEntry{
-		Expiration: expiration,
-		Namespace:  namespace,
-		UserName:   userName,
-	})
+	found := false
+	for _, entry := range b.CleanupList {
+		if entry.UserName == userName && entry.Namespace == namespace {
+			found = true
+			entry.Expiration = expiration
+		}
+	}
+	if found == false {
+		b.CleanupList = append(b.CleanupList, cleanupEntry{
+			Expiration: expiration,
+			Namespace:  namespace,
+			UserName:   userName,
+		})
+	}
 	sort.Slice(b.CleanupList, func(i, j int) bool { return b.CleanupList[i].Expiration < b.CleanupList[j].Expiration })
 	return nil
 }
