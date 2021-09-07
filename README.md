@@ -1,4 +1,5 @@
 
+
 # ObjectScale secrets plugin for Hashicorp Vault
 This plug in will manage IAM dynamic access key ID and secrets for accessing ObjectScale S3 buckets.
 
@@ -26,7 +27,7 @@ A secrets engine plugin must be setup and configured before it can be used. Foll
 In this mode, a user is dynamically created and deleted as determined by a TTL value and policies, groups, tags, and a permission boundary can be applied to the created user. Credentials for this user will be returned for use to access resources of the cluster.
 
 ## Predefined mode
-In this mode the plugin only handles creating S3 access secrets that expire within the defined TTL values. The user is expected to already exist either locally on the cluster or in another authentication provider like Active Directory.
+In this mode the plugin only handles creating S3 access secrets that expire within the defined TTL values. The user is expected to already exist either locally on the cluster.
 
 No additional cluster configuration is required for this mode.
 
@@ -38,7 +39,7 @@ Any binary releases available can be found [here](https://github.com/murkyl/vaul
 ### From source
 Clone the GitHub repository to your local machine and run `make build` from the root of the sources directory. After successful compilation the resulting `vault-plugin-secrets-objectscale` binary is located in the `bin/` directory.
 
-Building from source assumes you have installed the Go development environment.
+Building from source assumes you have installed the Go development environment. The instructions and Makefile are developed for Linux based systems. Adjust the instructions according to your platform.
 
 ### Registering the plugin
 Before a Vault plugin can be used, it must be copied to the Vault plugins directory and registered. The plugin directory for Vault is located in the Vault configuration file, often located at `/etc/vault.d/vault.hcl`.
@@ -67,17 +68,9 @@ vault secrets enable -path=objectscale vault-plugin-secrets-objectscale
 ```
 
 ### Plugin configuration
-To configure the plugin you need to write a set of key/value pairs to the path /config/root off of your plugin mount point. These configuration values should be written as key value pairs. Only 3 values are mandatory while the remainder have defaults. See the [available options](#path-configroot) below for additional customization. The configuration below assumes defaults are used.
+To configure the plugin you need to write a set of key/value pairs to the path /config/root off of your plugin mount point. These configuration values should be written as key value pairs. Only 3 values are mandatory while the remainder have defaults. See the [available options](#path-configroot) below for additional customization. The configuration below assumes defaults are used. The user and password need to be a management or namespace user.
 
-### Dynamic mode
-```shell
-vault write objectscale/config/root \
-    user="vault_mgr" \
-    password="isasecret" \
-    endpoint="https://cluster.com:4443"
-```
-
-#### Predefined mode
+#### Dynamic mode
 ```shell
 vault write objectscale/config/root \
     user="vault_mgr" \
@@ -89,28 +82,30 @@ vault write objectscale/config/root \
 Normal use involves creating roles that associate local groups to the role and then retrieving the credentials for that role. The roles and credential paths need to be secured via ACLs in Vault itself as the plugin does not perform any authentication or access control. Any request that reaches the plugin is assumed to have permission to do so from Vault.
 
 ### Create a role in Vault that will apply a set of policies to a user
-This plugin role will associate policies, groups, tags, and boundary permissions to a dynamically created user. Only the namespace parameter is required however not providing a policy or group results in a created user with no permissions.
+This plugin role will associate policies, groups, tags, and boundary permissions to a dynamically created user. Only the namespace parameter is required however not providing a policy or group results in a created user with no permissions. Replace VaultRoleName with the name of the role you want to create.
 
 ```shell
-vault write objectscale/roles/dynamic/Test1 namespace="somenamespace" policy=iampolicy1
+vault write objectscale/roles/dynamic/VaultRoleName namespace="somenamespace" policy=iampolicy1
+vault write objectscale/roles/dynamic/VaultRoleName2 namespace="somenamespace" policy=usernamespace:useriampolicy1
 ```
 
 The namespace is required when defining a role. See the [available options](#path-rolesdynamicrole_name) below for additional customization.
 
 ### Retrieve a credential with the default TTL
 ```shell
-vault read objectscale/creds/dynamic/Test1
+vault read objectscale/creds/dynamic/VaultRoleName
 ```
 
 ### Retrieve a credential with an unlimited TTL
 ```shell
-vault read objectscale/creds/dynamic/Test1 ttl=-1
+vault read objectscale/creds/dynamic/VaultRoleName ttl=-1
 ```
 
 ### Retrieve a credential with a TTL of 180 seconds
 ```shell
-vault read objectscale/creds/dynamic/Test1 ttl=180
+vault read objectscale/creds/dynamic/VaultRoleName ttl=180
 ```
+In dynamic mode, repeated calls to read the objectscale/creds/dynamic/`role_name` path will each return a new access ID and secret pair.
 
 ### Credential expiration and cleanup
 By default the plugin will provide an access token and secret that has an expiration of 300 seconds (5 minutes). The plugin creates a user name that looks like `vault_4xzkHE_7090_20210826133755`. The name begins with the **username_prefix** followed by a 6 character random string. It is followed by the first 4 characters of the Vault request UUID and then finally a time stamp. For credentials that expire, this timestamp represents the local time that the credential will become invalid.
@@ -127,7 +122,8 @@ A user needs to have a role created for them before they are allowed to retrieve
 
 ```shell
 vault write objectscale/roles/predefined/user1 namespace="somenamespace"
-vault write objectscale/roles/predefined/user1 namespace="somenamespace" ttl=600
+vault write objectscale/roles/predefined/user1 namespace="somenamespace" ttl=600 policy=iampolicy1
+vault write objectscale/roles/predefined/user1 namespace="somenamespace" ttl=600 policy=usernamespace:iampolicy1
 ```
 
 Attempts to configure a role where the user does not exist will succeed. However, when a credential is requested an error will be returned.
