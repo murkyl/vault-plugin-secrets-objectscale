@@ -104,7 +104,7 @@ func (b *backend) pluginPeriod(ctx context.Context, req *logical.Request) error 
 		b.NextCleanup = b.NextCleanup.Add(timeDiff).Add(time.Second * time.Duration(cfg.CleanupPeriod))
 
 		rex := regexp.MustCompile(fmt.Sprintf(defaultUserRegexp, cfg.UsernamePrefix))
-		namespaces, err := getActiveNamespacesFromRoles(ctx, req, cfg.UsernamePrefix)
+		namespaces, err := b.getActiveNamespacesFromRoles(ctx, req, cfg.UsernamePrefix)
 		if err != nil {
 			return err
 		}
