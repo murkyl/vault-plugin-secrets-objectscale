@@ -1,6 +1,7 @@
 
 
 
+
 # ObjectScale secrets plugin for Hashicorp Vault
 This plug in will manage IAM dynamic access key ID and secrets for accessing ObjectScale S3 buckets.
 
@@ -28,7 +29,7 @@ A secrets engine plugin must be setup and configured before it can be used. Foll
 In this mode, a user is dynamically created and deleted as determined by a TTL value and policies, groups, tags, and a permission boundary can be applied to the created user. Credentials for this user will be returned for use to access resources of the cluster.
 
 ## Predefined mode
-In this mode the plugin only handles creating S3 access secrets that expire within the defined TTL values. The user is expected to already exist either locally on the cluster.
+In this mode the plugin only handles creating S3 access secrets that expire within the defined TTL values. The user is expected to already exist in the namespace configured in the role. In ObjectScale a user can have up to 2 access keys active at any one time. These access keys are predetermined for a user at user creation time and do not change so the plugin can only invalidate the secrets for a user.
 
 No additional cluster configuration is required for this mode.
 
@@ -104,7 +105,6 @@ This warning is expected and can be safely ignored.
 ### Plugin configuration
 To configure the plugin you need to write a set of key/value pairs to the path /config/root off of your plugin mount point. These configuration values should be written as key value pairs. Only 3 values are mandatory while the remainder have defaults. See the [available options](#path-configroot) below for additional customization. The configuration below assumes defaults are used. The user and password need to be a management or namespace user.
 
-#### Dynamic mode
 ```shell
 vault write objectscale/config/root \
     user="vault_mgr" \
@@ -149,7 +149,7 @@ If a credential with an unlimited duration is requested the user name will be in
 The dynamically generated users will periodically be cleaned up by the plugin. The frequency that this occurs is determined by the `cleanup_period` option. The default is 600 seconds (10 minutes). Credentials that expire in between the cleanup periods will not be deleted until the next cleanup period occurs. A cleanup period check happens every minute from when the plugin is enabled. Internally the cleanup schedule is fixed at an interval of the cleanup period. For an example, if the plugin is started at 09:28, then the next cleanup periods will be 09:30, 09:40, 09:50, etc. If the cleanup period is 1 hour and the plugin is started at 09:28, the next cleanup will occur at 10:00, 11:00, 12:00, etc.
 
 ## Predefined mode usage
-Normal use involves creating roles that represent a user's user name and then automatically expiring access key and secrets.
+Normal use involves creating roles that represent a user's user name and then automatically expiring secrets.
 
 ### Create the role
 A user needs to have a role created for them before they are allowed to retrieve a credential. This role should have a Vault access policy only allowing the specified user to access this particular path. Failure to do so could result in a user prematurely invalidating another user's credentials and also reading another user's credentials.
