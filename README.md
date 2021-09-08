@@ -1,5 +1,6 @@
 
 
+
 # ObjectScale secrets plugin for Hashicorp Vault
 This plug in will manage IAM dynamic access key ID and secrets for accessing ObjectScale S3 buckets.
 
@@ -48,7 +49,7 @@ Details of the Vault configuration file can be found in the [Vault online docs](
 
 The required settings for registering a plugin are `plugin_directory` and `api_addr`. These need to be set according to your environment.
 
-After copying the binary into the plugin directory, make sure that the permissions on the binary allow the Vault server process to execute it. Sometimes this means changing the ownership and group of the plugin to the Vault POSIX user account, for example chown vault:vault and a chmod 750.
+After copying the binary into the plugin directory, make sure that the permissions on the binary allow the Vault server process to execute it. Sometimes this means changing the ownership and group of the plugin to the Vault POSIX user account, for example chown vault:vault and a chmod 750. On a Windows platform make sure the binary ends with the .exe extension.
 
 Make sure the Vault server itself is running, unsealed, and your have logged into Vault before registering the plugin.
 
@@ -56,8 +57,35 @@ Plugins also need to be registered with the Vault server [plugin catalog](https:
 
 ```shell
 vault plugin register \
-	-sha256=$(sha256sum /etc/vault.d/vault_plugins/vault-plugin-secrets-objectscale | cut -d " " -f 1) \
-	secret vault-plugin-secrets-objectscale
+  -sha256=$(sha256sum /etc/vault.d/vault_plugins/vault-plugin-secrets-objectscale_vX.Y.Z | cut -d " " -f 1) \
+  -command vault-plugin-secrets-objectscale_vX.Y.Z \
+  secret vault-plugin-secrets-objectscale
+```
+
+The -command option can be skipped and the default of the plugin name will be used as the executable. It is easier to always use the -command value to point to a specific version of the plugin executable.
+
+You may see a warning in your Vault logs similar to this:
+```shell
+[WARN]  secrets.vault-plugin-secrets-objectscale.vault-plugin-secrets-objectscale_f798c167.vault-plugin-secrets-objectscale: plugin failed to exit gracefully: metadata=true
+```
+This warning is expected and can be safely ignored.
+
+### Upgrading the plugin
+[Upgrading a plugin](https://www.vaultproject.io/docs/upgrading/plugins) and keeping the existing configuration requires some specific steps. The procedure is similar to registering the plugin for the first time.
+
+1) Ensure the current plugin is already registered, enabled, and mounted to a path
+2) Copy the new binary to the plugin directory
+3) Generate the SHA256 hash of the new binary
+4) Register the new binary with the old plugin name
+5) Ask Vault to reload the plugin
+
+```shell
+vault plugin register \
+  -sha256=$(sha256sum /etc/vault.d/vault_plugins/vault-plugin-secrets-objectscale_vX.Y.Z | cut -d " " -f 1) \
+  -command vault-plugin-secrets-objectscale_vA.B.C \
+  secret vault-plugin-secrets-objectscale
+
+vault plugin reload -plugin vault-plugin-secrets-objectscale
 ```
 
 ### Enabling the plugin
@@ -66,6 +94,12 @@ After the plugin is registered you can enable the plugin and have it available o
 ```shell
 vault secrets enable -path=objectscale vault-plugin-secrets-objectscale
 ```
+
+You may see a warning in your Vault logs similar to this:
+```shell
+[WARN]  secrets.vault-plugin-secrets-objectscale.vault-plugin-secrets-objectscale_f798c167.vault-plugin-secrets-objectscale: plugin failed to exit gracefully: metadata=true
+```
+This warning is expected and can be safely ignored.
 
 ### Plugin configuration
 To configure the plugin you need to write a set of key/value pairs to the path /config/root off of your plugin mount point. These configuration values should be written as key value pairs. Only 3 values are mandatory while the remainder have defaults. See the [available options](#path-configroot) below for additional customization. The configuration below assumes defaults are used. The user and password need to be a management or namespace user.

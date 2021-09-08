@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"github.com/hashicorp/vault/sdk/framework"
 	"github.com/hashicorp/vault/sdk/logical"
-	oslite "github.com/murkyl/go-objectscale-lite"
 )
 
 const (
@@ -175,14 +174,9 @@ func (b *backend) pathConfigRootWrite(ctx context.Context, req *logical.Request,
 
 	res := &logical.Response{}
 	res.AddWarning("Read access to this endpoint should be controlled via ACLs as it will return sensitive information including credentials")
-	err = b.Conn.Connect(&oslite.ObjectScaleCfg{
-		User:       cfg.User,
-		Password:   cfg.Password,
-		Endpoint:   cfg.Endpoint,
-		BypassCert: cfg.BypassCert,
-	})
+	err = b.pluginReinit(ctx, req.Storage)
 	if err != nil {
-		res.AddWarning(fmt.Sprintf("Unable to connect to API endpoint: %s", err))
+		res.AddWarning(fmt.Sprintf("Unable to connect to initialize plugin after config update: %s", err))
 	}
 	return res, nil
 }

@@ -70,14 +70,31 @@ func Factory(ctx context.Context, cfg *logical.BackendConfig) (logical.Backend, 
 }
 
 func (b *backend) pluginInit(ctx context.Context, req *logical.InitializationRequest) error {
-	cfg, err := getCfgFromStorage(ctx, req.Storage)
+	b.Conn = oslite.NewObjectScaleConn()
+	if b.Conn == nil {
+		return fmt.Errorf("Failed to create a new ObjectScale connection")
+	}
+	return b.pluginReinit(ctx, req.Storage)
+}
+
+func (b *backend) pluginReinit(ctx context.Context, s logical.Storage) error {
+	cfg, err := getCfgFromStorage(ctx, s)
 	if err != nil {
 		return err
 	}
-	b.Conn = oslite.NewObjectScaleConn()
 	if cfg == nil {
 		b.Logger().Info("No configuration found. Configure this plugin at the URL <plugin_path>/config/root")
 		return nil
+	}
+	b.NextCleanup = time.Now().Round(time.Second * time.Duration(cfg.CleanupPeriod))
+	if b.NextCleanup.Before(time.Now()) {
+		b.NextCleanup = b.NextCleanup.Add(time.Second * time.Duration(cfg.CleanupPeriod))
+	}
+	newCleanupList, err := b.getCleanupEntriesFromRoles(ctx, s)
+	if err != nil {
+		b.Logger().Error("Could not get new cleanup list from predefined roles. Old list is being retained")
+	} else {
+		b.CleanupList = newCleanupList
 	}
 	err = b.Conn.Connect(&oslite.ObjectScaleCfg{
 		User:       cfg.User,
@@ -87,10 +104,6 @@ func (b *backend) pluginInit(ctx context.Context, req *logical.InitializationReq
 	})
 	if err != nil {
 		b.Logger().Info(fmt.Sprintf("Unable to connect to endpoint during plugin creation: %s", err))
-	}
-	b.NextCleanup = time.Now().Round(time.Second * time.Duration(cfg.CleanupPeriod))
-	if b.NextCleanup.Before(time.Now()) {
-		b.NextCleanup = b.NextCleanup.Add(time.Second * time.Duration(cfg.CleanupPeriod))
 	}
 	return nil
 }
@@ -113,7 +126,7 @@ func (b *backend) pluginPeriod(ctx context.Context, req *logical.Request) error 
 		b.NextCleanup = b.NextCleanup.Add(timeDiff).Add(time.Second * time.Duration(cfg.CleanupPeriod))
 
 		rex := regexp.MustCompile(fmt.Sprintf(defaultUserRegexp, cfg.UsernamePrefix))
-		namespaces, err := b.getActiveNamespacesFromRoles(ctx, req, cfg.UsernamePrefix)
+		namespaces, err := b.getActiveNamespacesFromRoles(ctx, req.Storage, cfg.UsernamePrefix)
 		if err != nil {
 			b.Logger().Error(fmt.Sprintf("[pluginPeriod] Unable to get active namespaces"))
 		} else {
@@ -149,16 +162,19 @@ func (b *backend) pluginPeriod(ctx context.Context, req *logical.Request) error 
 	curUnixTime := curTime.Unix()
 	cutoff := -1
 	for i, entry := range b.CleanupList {
-		if entry.Expiration < curUnixTime {
-			// One of the entries in the predefined cleanup list has expired
-			cutoff = i
-			err = b.Conn.DeleteIAMAccessKeyAll(entry.Namespace, entry.UserName)
-			if err != nil {
-				b.Logger().Error(fmt.Sprintf("Unable to clean up key for %s:%s", entry.Namespace, entry.UserName))
-			}
-			clearPredefinedRoleExpiration(ctx, req.Storage, entry.UserName)
-		} else {
+		if entry.Expiration > curUnixTime {
+			// Since the expiration list is sorted, the first entry we encounter that is in the future lets us halt the search
 			break
+		}
+		// One of the entries in the predefined cleanup list has expired
+		cutoff = i
+		err = b.Conn.DeleteIAMAccessKeyAll(entry.Namespace, entry.UserName)
+		if err != nil {
+			b.Logger().Error(fmt.Sprintf("Unable to clean up key for %s:%s", entry.Namespace, entry.UserName))
+		}
+		err = clearPredefinedRoleExpiration(ctx, req.Storage, entry.UserName)
+		if err != nil {
+			b.Logger().Error(fmt.Sprintf("Unable to clear role expiration for role %s: %v", entry.UserName, err))
 		}
 	}
 	if cutoff != -1 {
@@ -177,15 +193,15 @@ func (b *backend) pluginCleanup(ctx context.Context) {
 
 // getActiveNamespacesFromRoles searches all configured roles and returns a list of access zones that have users
 // configured
-func (b *backend) getActiveNamespacesFromRoles(ctx context.Context, req *logical.Request, userNamePrefix string) (map[string]bool, error) {
-	configuredRoles, err := req.Storage.List(ctx, apiPathRolesDynamic)
+func (b *backend) getActiveNamespacesFromRoles(ctx context.Context, s logical.Storage, userNamePrefix string) (map[string]bool, error) {
+	configuredRoles, err := s.List(ctx, apiPathRolesDynamic)
 	if err != nil {
 		return nil, err
 	}
 	// Get all the active namespaces
 	namespaces := map[string]bool{}
 	for _, role := range configuredRoles {
-		roleData, err := getDynamicRoleFromStorage(ctx, req.Storage, role)
+		roleData, err := getDynamicRoleFromStorage(ctx, s, role)
 		if err != nil || roleData == nil {
 			b.Logger().Error("[getActiveNamespacesFromRoles] Unable to get role information for role %s: %s", role, err)
 			continue
@@ -195,6 +211,32 @@ func (b *backend) getActiveNamespacesFromRoles(ctx context.Context, req *logical
 	return namespaces, nil
 }
 
+// getCleanupEntriesFromRoles returns a list of cleanup entries for all roles under the roles/predefined path
+func (b *backend) getCleanupEntriesFromRoles(ctx context.Context, s logical.Storage) ([]cleanupEntry, error) {
+	configuredRoles, err := s.List(ctx, apiPathRolesPredefined)
+	if err != nil {
+		return nil, err
+	}
+	var cleanupList []cleanupEntry
+	for _, role := range configuredRoles {
+		roleData, err := getPredefinedRoleFromStorage(ctx, s, role)
+		if err != nil || roleData == nil {
+			b.Logger().Error("[getCleanupEntriesFromRoles] Unable to get role information for role %s: %s", role, err)
+			continue
+		}
+		if roleData.SecretExpiration > 0 {
+			cleanupList = append(cleanupList, cleanupEntry{
+				Expiration: roleData.SecretExpiration,
+				Namespace:  roleData.Namespace,
+				UserName:   role,
+			})
+		}
+	}
+	sort.Slice(cleanupList, func(i, j int) bool { return cleanupList[i].Expiration < cleanupList[j].Expiration })
+	return cleanupList, nil
+}
+
+// addCleanupEntry will create, insert, and sort a new cleanup entry onto the existing cleanup list
 func (b *backend) addCleanupEntry(expiration int64, namespace string, userName string) error {
 	found := false
 	for _, entry := range b.CleanupList {
