@@ -9,13 +9,12 @@ import (
 )
 
 const (
-	apiPathCredsPredefined                string = "creds/predefined/"
-	fieldPathCredsPredefinedAccessKey     string = "access_key"
-	fieldPathCredsPredefinedKeyExpiry     string = "key_expiry"
-	fieldPathCredsPredefinedName          string = "name"
-	fieldPathCredsPredefinedSecretKey     string = "secret_key"
-	fieldPathCredsPredefinedSecurityToken string = "security_token"
-	fieldPathCredsPredefinedTTL           string = "ttl"
+	apiPathCredsPredefined            string = "creds/predefined/"
+	fieldPathCredsPredefinedAccessKey string = "access_key"
+	fieldPathCredsPredefinedKeyExpiry string = "key_expiry"
+	fieldPathCredsPredefinedName      string = "name"
+	fieldPathCredsPredefinedSecretKey string = "secret_key"
+	fieldPathCredsPredefinedTTL       string = "ttl"
 )
 
 func pathCredsPredefinedBuild(b *backend) []*framework.Path {
@@ -87,10 +86,9 @@ func (b *backend) pathCredsPredefinedRead(ctx context.Context, req *logical.Requ
 		return nil, fmt.Errorf("Error getting access key for user %s: %s", userName, err)
 	}
 	kv := map[string]interface{}{
-		fieldPathCredsPredefinedAccessKey:     creds.AccessKeyID,
-		fieldPathCredsPredefinedSecretKey:     creds.SecretAccessKey,
-		fieldPathCredsPredefinedSecurityToken: nil,
-		fieldPathCredsPredefinedKeyExpiry:     0, // 0 represents no expiration
+		fieldPathCredsPredefinedAccessKey: creds.AccessKeyID,
+		fieldPathCredsPredefinedSecretKey: creds.SecretAccessKey,
+		fieldPathCredsPredefinedKeyExpiry: 0, // 0 represents no expiration
 	}
 	if TTLMinutes > 0 {
 		kv[fieldPathCredsPredefinedKeyExpiry] = time.Now().Add(time.Duration(TTLMinutes) * time.Minute).Unix()
