@@ -72,18 +72,18 @@ func (b *backend) pathSTSPredefinedRead(ctx context.Context, req *logical.Reques
 	// Get configuration from backend storage
 	role, err := getPredefinedRoleFromStorage(ctx, req.Storage, userName)
 	if err != nil || role == nil {
-					return nil, err
+		return nil, err
 	}
 	// Get the second access key. This key is only temporarily used to generate the STS token and then deleted
 	creds, err := b.Conn.CreateIAMAccessKey(role.Namespace, userName)
 	if err != nil {
-					return nil, fmt.Errorf("Error getting access key for user %s: %s", userName, err)
+		return nil, fmt.Errorf("Error getting access key for user %s: %s", userName, err)
 	}
 	signingCtx := oslite.NewV4SignerContext(
 		creds.AccessKeyID,
 		creds.SecretAccessKey,
-		"",	// ObjectScale does not care about the region
-		"",	// ObjectScale does not care about the service
+		"", // ObjectScale does not care about the region
+		"", // ObjectScale does not care about the service
 	)
 	// Retrieve the STS secret token
 	roleCreds, err := b.Conn.AssumeRole(
