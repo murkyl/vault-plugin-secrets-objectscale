@@ -87,7 +87,7 @@ func (b *backend) pathSTSPredefinedRead(ctx context.Context, req *logical.Reques
 	)
 	// Retrieve the STS secret token
 	roleCreds, err := b.Conn.AssumeRole(
-		roleArn,
+		oslite.GetURNRoleFromString(roleArn),
 		&qParams,
 		&signingCtx,
 	)
