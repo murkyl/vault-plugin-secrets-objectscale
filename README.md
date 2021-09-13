@@ -1,7 +1,3 @@
-
-
-
-
 # ObjectScale secrets plugin for Hashicorp Vault
 This plug in will manage IAM dynamic access key ID and secrets for accessing ObjectScale S3 buckets.
 
@@ -29,7 +25,7 @@ A secrets engine plugin must be setup and configured before it can be used. Foll
 In this mode, a user is dynamically created and deleted as determined by a TTL value and policies, groups, tags, and a permission boundary can be applied to the created user. Credentials for this user will be returned for use to access resources of the cluster.
 
 ## Predefined mode
-In this mode the plugin only handles creating S3 access secrets that expire within the defined TTL values. The user is expected to already exist in the namespace configured in the role. In ObjectScale a user can have up to 2 access keys active at any one time. These access keys are predetermined for a user at user creation time and do not change so the plugin can only invalidate the secrets for a user.
+In this mode the plugin only handles creating S3 access secrets that expire within the defined TTL values. The user is expected to already exist in the namespace configured in the role. In ObjectScale a user can have up to 2 access keys active at any one time. These access keys are predetermined for a user at user creation time and do not change so the plugin can only invalidate the secrets for a user and not the access key as well. When in the predefined mode the user that is configured should only have access keys managed by the plugin and not manually via the management console. Manually created access keys will get cleaned up by the plugin and having 2 access keys will prevent the STS/role assumption from working properly.
 
 No additional cluster configuration is required for this mode.
 
@@ -179,6 +175,47 @@ vault read objectscale/creds/predefined/user1 ttl=-1
 vault read objectscale/creds/predefined/user1 ttl=180
 ```
 
+## Predefined STS/IAM role assumption usage
+The plugin supports returning credentials for a user assuming a role. The configuration is simple and only requires that the the user have a role configured as per the normal predefined mode usage. When retrieving the elevated privileges the plugin will automatically create a temporary set of Access ID and secrets for the user, use the new credentials to retrieve the elevated privileges, and then delete the temporary credentials.
+
+Retrieving elevated credentials requires knowing the ARN for the role that is to be assumed by the user. This ARN needs to be passed into the call to the endpoint. The minimum duration for the elevated privileges is 3600 seconds. A longer duration can be requested during the credential request but the maximum is limited by the role itself.
+
+The ARN for the role can be in the full form of: urn:ecs:iam::*__namespace__*:*__policy__* or a shortened form of *__namespace__*:*__policy__*. 
+
+### Retrieve elevated role privileges
+```shell
+vault read oscale/sts/predefined/regularjoe role_arn=urn:ecs:iam::apj:role/upgradeJoe
+Key               Value
+---               -----
+access_key        ASIA6605D5BA9FC4B2DC
+key_expiry        3600
+secret_key        K_A3pc8k7NNPV6dbxFaugkdbUbhgGGL42pN9ld5nAHE
+security_token    CgNhcGoSCnJlZ3VsYXJqb2UaFEFST0E4RTk3OUFEODgwODlFRjJEIiB1cm46ZWNzOmlhbTo6YXBqOnJvbGUvdXBncmFkZUpvZSoUQVNJQTY2MDVENUJBOUZDNEIyREMyUE1hc3RlcktleVJlY29yZC0zZGE0ZTJlNmMyMGNiMzg2NDVlZTJlYjlkNWUxYzUxODJiYTBhYjQ3NWIxMDg4YWE5NDBmMzIyZTAyNWEzY2Q1OPKls_O9L1IfQUtJQTUwNzExREExQUJCMzc3NEItMTYzMTUyMDY3N2inj_yJBg
+```
+
+### Retrieve elevated role privileges with a short ARN
+```shell
+vault read oscale/sts/predefined/regularjoe role_arn=apj:upgradeJoe
+Key               Value
+---               -----
+access_key        ASIAF485735B1E00B6AD
+key_expiry        3600
+secret_key        _lSn4juWxKBlZ3No-83QRLLN-RPA2ZF-SH-t8HrkxQQ
+security_token    CgNhcGoSCnJlZ3VsYXJqb2UaFEFST0E4RTk3OUFEODgwODlFRjJEIiB1cm46ZWNzOmlhbTo6YXBqOnJvbGUvdXBncmFkZUpvZSoUQVNJQUY0ODU3MzVCMUUwMEI2QUQyUE1hc3RlcktleVJlY29yZC0zZGE0ZTJlNmMyMGNiMzg2NDVlZTJlYjlkNWUxYzUxODJiYTBhYjQ3NWIxMDg4YWE5NDBmMzIyZTAyNWEzY2Q1OMGA-PW9L1IfQUtJQTUwNzExREExQUJCMzc3NEItMTYzMTUyNTk5N2jvuPyJBg
+```
+
+### Specifying an invalid duration results in an error
+```shell
+vault read oscale/sts/predefined/regularjoe role_arn=apj:upgradeJoe duration=30000
+Error reading oscale/sts/predefined/regularjoe: Error making API request.
+
+URL: GET http://127.0.0.1:8200/v1/oscale/sts/predefined/regularjoe?duration=30000&role_arn=apj%3AupgradeJoe
+Code: 500. Errors:
+
+* 1 error occurred:
+        * Assume role failed: [Send] Non 2xx response received (400): {"Error":{"Type":"Sender","Code":"ValidationError","Message":"The requested DurationSeconds 30000 exceeds the MaxSessionDuration 14400 set for this role urn:ecs:iam::apj:role/upgradeJoe."},"RequestId":"0a3bc915:17aa04e9c58:10743:0"}
+```
+
 ## Security
 HashiCorp Vault administrators are responsible for plugin security, including creating the Vault policy to ensure only authorized Hashicorp Vault users have access to the ObjectScale secrets plugin.
 
@@ -205,6 +242,7 @@ vault token create -policy=objectscale-predefined-readcred-user1
     /creds/dynamic/<role_name>
     /roles/predefined/<role_name>
     /creds/predefined/<role_name>
+    /sts/predefined/<role_name>
 
 ### Available options
 The configured TTL values for the role and plugin itself can be any value however, all TTL value will get rounded to the nearest 60 seconds (1 minute) when actually used.
@@ -248,4 +286,12 @@ The configured TTL values for the role and plugin itself can be any value howeve
 | Key               | Description | Default | Required |
 | ----------------- | ------------| :------ | :------: |
 | ttl               | **int** - Requested number of seconds that  secret token is valid. This value will be capped by the maximum TTL specified by the role and plugin configuration. A value of -1 represents an unlimited lifetime token. A value of 0 represents taking the role or plugin configuration default | 0 | No |
+
+#### Path: /sts/predefined/role_name
+| Key               | Description | Default | Required |
+| ----------------- | ------------| :------ | :------: |
+| duration          | **int** - Requested assumed role session duration in seconds. If not set or set to 0, role configured default will be used | 3600 | No |
+| role_arn          | **string** - The ARN of the role to assume. The ARN for the role can be in the full form:<br/>urn:ecs:iam::*__namespace__*:*__policy__*<br/>or a shortened form:<br/>*__namespace__*:*__policy__*
+ | 0 | Yes |
+| session_name      | **string** - Name for the assumed role session. If not set a default generated from the user and time of request will be used. | 0 | No |
 
