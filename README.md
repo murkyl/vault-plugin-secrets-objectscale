@@ -291,7 +291,6 @@ The configured TTL values for the role and plugin itself can be any value howeve
 | Key               | Description | Default | Required |
 | ----------------- | ------------| :------ | :------: |
 | duration          | **int** - Requested assumed role session duration in seconds. If not set or set to 0, role configured default will be used | 3600 | No |
-| role_arn          | **string** - The ARN of the role to assume. The ARN for the role can be in the full form:<br/>urn:ecs:iam::*__namespace__*:*__policy__*<br/>or a shortened form:<br/>*__namespace__*:*__policy__*
- | 0 | Yes |
+| role_arn          | **string** - The ARN of the role to assume. The ARN for the role can be in the full form:<br/>urn:ecs:iam::*__namespace__*:*__policy__*<br/>or a shortened form:<br/>*__namespace__*:*__policy__* |  | Yes |
 | session_name      | **string** - Name for the assumed role session. If not set a default generated from the user and time of request will be used. | 0 | No |
 
