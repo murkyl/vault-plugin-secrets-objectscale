@@ -49,7 +49,7 @@ func pathConfigBuild(b *backend) []*framework.Path {
 				},
 				fieldConfigEndpoint: {
 					Type:        framework.TypeString,
-					Description: "OneFS API endpoint. Typically the endpoint looks like: https://fqdn:8080",
+					Description: "ObjectScale API endpoint. Typically the endpoint looks like: https://fqdn:4443",
 				},
 				fieldConfigPassword: {
 					Type:        framework.TypeString,
