@@ -1,3 +1,4 @@
+
 # ObjectScale secrets plugin for Hashicorp Vault
 This plug in will manage IAM dynamic access key ID and secrets for accessing ObjectScale S3 buckets.
 
@@ -99,10 +100,22 @@ You may see a warning in your Vault logs similar to this:
 This warning is expected and can be safely ignored.
 
 ### Plugin configuration
-To configure the plugin you need to write a set of key/value pairs to the path /config/root off of your plugin mount point. These configuration values should be written as key value pairs. Only 3 values are mandatory while the remainder have defaults. See the [available options](#path-configroot) below for additional customization. The configuration below assumes defaults are used. The user and password need to be a management or namespace user.
+To configure the plugin you need to write a set of key/value pairs to the path /config/root off of your plugin mount point. These configuration values should be written as key value pairs. Only 3 values are mandatory while the remainder have defaults. See the [available options](#path-configroot) below for additional customization.
+
+The configuration below assumes defaults are used. The user and password need to be an IAM user's access key and secret. Using an IAM user is recommended for the highest level of security. The IAM user should be granted the minimum privileges required to perform the actions required by the plugin.
 
 ```shell
 vault write objectscale/config/root \
+    user="<iam_user_access_key>" \
+    password="<iam_user_secret>" \
+    endpoint="https://cluster.com:4443"
+```
+
+An alternative is to use basic authentication and a session token. In this configuration the user and password needs to be a management or namespace user. Do note the additional parameter to specify the authentication type.
+
+```shell
+vault write objectscale/config/root \
+    auth_type="basic" \
     user="vault_mgr" \
     password="isasecret" \
     endpoint="https://cluster.com:4443"
@@ -250,13 +263,14 @@ The configured TTL values for the role and plugin itself can be any value howeve
 #### Path: /config/root
 | Key               | Description | Default | Required |
 | ----------------- | ------------| :------ | :------: |
-| endpoint          | **string** - FQDN or IP address of the ObjectScale cluster. The string should contain the protocol and port. e.g. https://cluster.name:4443 | | Yes |
-| user              | **string** - User name for the user that will be used to access the ObjectScale cluster | | Yes |
-| password          | **string** - Password for the user that will be used to access the ObjectScale cluster | | Yes |
+| auth_type         | **string** - The type of authentication used to connect to the ObjectScale API. Valid values are: iam or basic. This value changes the meaning of the values used in the user and password options. | iam | No |
 | bypass_cert_check | **boolean** - When set to *true* SSL self-signed certificate issues are bypassed | false | No |
 | cleanup_period    | **integer** - Number of seconds between calls to cleanup user accounts | 600 | No |
+| endpoint          | **string** - FQDN or IP address of the ObjectScale cluster. The string should contain the protocol and port. e.g. https://cluster.name:4443 | | Yes |
+| password          | **string** - Password for user or secret key. The password or secret is not returned in a GET of the configuration. | | Yes |
 | ttl               | **int** - Default number of seconds that a secret token is valid. Individual roles and requests can override this value. A value of -1 or 0 represents an unlimited lifetime token. This value will be limited by the ttl_max value | 300 | No |
 | ttl_max           | **int** - Maximum number of seconds a secret token can be valid. Individual roles can be less than or equal to this value. A value of -1 or 0 represents an unlimited lifetime token | 0 | No |
+| user              | **string** - Name of user or IAM Access ID with appropriate RBAC privileges. See documentation for required privileges. The user or IAM access ID is returned in a GET of the configuration. | | Yes |
 | username_prefix   | **string** - String to be used as the prefix for all users dynamically created by the plugin | vault | No |
 
 #### Path: /roles/dynamic/role_name

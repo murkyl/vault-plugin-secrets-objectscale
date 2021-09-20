@@ -26,6 +26,7 @@ type backend struct {
 }
 
 type backendCfg struct {
+	AuthType       string
 	BypassCert     bool
 	CleanupPeriod  int
 	Endpoint       string
@@ -97,12 +98,19 @@ func (b *backend) pluginReinit(ctx context.Context, s logical.Storage) error {
 	} else {
 		b.CleanupList = newCleanupList
 	}
-	err = b.Conn.Connect(&oslite.ObjectScaleCfg{
+	osCfg := &oslite.ObjectScaleCfg{
 		User:       cfg.User,
 		Password:   cfg.Password,
+		AuthType:   cfg.AuthType,
 		Endpoint:   cfg.Endpoint,
 		BypassCert: cfg.BypassCert,
-	})
+	}
+	// When using IAM credentials all requests need to be signed so we set the automatic signing context
+	if cfg.AuthType != "basic" {
+		// We can use an empty region and service as ObjectScale does not require these values
+		osCfg.SigningCtx = oslite.NewV4SignerContext(cfg.User, cfg.Password, "", "")
+	}
+	err = b.Conn.Connect(osCfg)
 	if err != nil {
 		b.Logger().Info(fmt.Sprintf("Unable to connect to endpoint during plugin creation: %s", err))
 	}

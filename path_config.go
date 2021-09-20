@@ -10,9 +10,11 @@ import (
 
 const (
 	apiPathConfigRoot               string = "config/root"
+	defaultPathConfigAuthType       string = "iam"
 	defaultPathConfigCleanupPeriod  int    = 600
 	defaultPathConfigUsernamePrefix string = "vault"
 	defaultPathConfigDefaultTTL     int    = 300
+	fieldConfigAuthType             string = "auth_type"
 	fieldConfigBypassCert           string = "bypass_cert_check"
 	fieldConfigCleanupPeriod        string = "cleanup_period"
 	fieldConfigEndpoint             string = "endpoint"
@@ -39,6 +41,10 @@ func pathConfigBuild(b *backend) []*framework.Path {
 		{
 			Pattern: apiPathConfigRoot,
 			Fields: map[string]*framework.FieldSchema{
+				fieldConfigAuthType: {
+					Type:        framework.TypeString,
+					Description: fmt.Sprintf("Authentication type to use for connections to ObjectScale. Allowed values: iam and basic. When IAM is used the user field is used as the access key. Default is: %s", defaultPathConfigAuthType),
+				},
 				fieldConfigBypassCert: {
 					Type:        framework.TypeBool,
 					Description: "Set to true to disable SSL certificate authority verification. Default is false.",
@@ -53,7 +59,7 @@ func pathConfigBuild(b *backend) []*framework.Path {
 				},
 				fieldConfigPassword: {
 					Type:        framework.TypeString,
-					Description: "Password for user. The password is not returned in a GET of the configuration.",
+					Description: "Password for user or secret key. The password or secret is not returned in a GET of the configuration.",
 				},
 				fieldConfigTTL: {
 					Type:        framework.TypeInt,
@@ -65,7 +71,7 @@ func pathConfigBuild(b *backend) []*framework.Path {
 				},
 				fieldConfigUser: {
 					Type:        framework.TypeString,
-					Description: "Name of user with appropriate RBAC privileges to create and delete users.",
+					Description: "Name of user or IAM Access ID with appropriate RBAC privileges. See documentation for required privileges. The user or IAM access ID is returned in a GET of the configuration.",
 				},
 				fieldConfigUsernamePrefix: {
 					Type:        framework.TypeString,
@@ -91,6 +97,7 @@ func (b *backend) pathConfigRootRead(ctx context.Context, req *logical.Request, 
 	}
 	// Fill a key value struct with the stored values
 	kv := map[string]interface{}{
+		fieldConfigAuthType:       cfg.AuthType,
 		fieldConfigBypassCert:     cfg.BypassCert,
 		fieldConfigCleanupPeriod:  cfg.CleanupPeriod,
 		fieldConfigEndpoint:       cfg.Endpoint,
@@ -112,6 +119,10 @@ func (b *backend) pathConfigRootWrite(ctx context.Context, req *logical.Request,
 		cfg = &backendCfg{}
 	}
 	// Set config struct to values from request
+	authType, ok := data.GetOk(fieldConfigAuthType)
+	if ok {
+		cfg.AuthType = authType.(string)
+	}
 	bypassCert, ok := data.GetOk(fieldConfigBypassCert)
 	if ok {
 		cfg.BypassCert = bypassCert.(bool)
@@ -145,6 +156,9 @@ func (b *backend) pathConfigRootWrite(ctx context.Context, req *logical.Request,
 		cfg.UsernamePrefix = usernamePrefix.(string)
 	}
 	// Validate data
+	if cfg.AuthType == "" {
+		cfg.AuthType = defaultPathConfigAuthType
+	}
 	if cfg.CleanupPeriod == 0 {
 		cfg.CleanupPeriod = defaultPathConfigCleanupPeriod
 	}
