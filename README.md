@@ -106,19 +106,19 @@ The configuration below assumes defaults are used. The user and password need to
 
 ```shell
 vault write objectscale/config/root \
-    user="<iam_user_access_key>" \
-    password="<iam_user_secret>" \
-    endpoint="https://cluster.com:4443"
+    user=<iam_user_access_key> \
+    password=<iam_user_secret> \
+    endpoint=https://cluster.com:4443
 ```
 
 An alternative is to use basic authentication and a session token. In this configuration the user and password needs to be a management or namespace user. Do note the additional parameter to specify the authentication type.
 
 ```shell
 vault write objectscale/config/root \
-    auth_type="basic" \
-    user="vault_mgr" \
-    password="isasecret" \
-    endpoint="https://cluster.com:4443"
+    auth_type=basic \
+    user=vault_mgr \
+    password=isasecret \
+    endpoint=https://cluster.com:4443
 ```
 
 ## Dynamic mode usage
@@ -128,8 +128,8 @@ Normal use involves creating roles that associate local groups to the role and t
 This plugin role will associate policies, groups, tags, and boundary permissions to a dynamically created user. Only the namespace parameter is required however not providing a policy or group results in a created user with no permissions. Replace VaultRoleName with the name of the role you want to create.
 
 ```shell
-vault write objectscale/roles/dynamic/VaultRoleName namespace="somenamespace" policy=iampolicy1
-vault write objectscale/roles/dynamic/VaultRoleName2 namespace="somenamespace" policy=usernamespace:useriampolicy1
+vault write objectscale/roles/dynamic/VaultRoleName namespace=somenamespace policy=iampolicy1
+vault write objectscale/roles/dynamic/VaultRoleName2 namespace=somenamespace policy=usernamespace:useriampolicy1
 ```
 
 The namespace is required when defining a role. See the [available options](#path-rolesdynamicrole_name) below for additional customization.
@@ -164,9 +164,9 @@ Normal use involves creating roles that represent a user's user name and then au
 A user needs to have a role created for them before they are allowed to retrieve a credential. This role should have a Vault access policy only allowing the specified user to access this particular path. Failure to do so could result in a user prematurely invalidating another user's credentials and also reading another user's credentials.
 
 ```shell
-vault write objectscale/roles/predefined/user1 namespace="somenamespace"
-vault write objectscale/roles/predefined/user1 namespace="somenamespace" ttl=600 policy=iampolicy1
-vault write objectscale/roles/predefined/user1 namespace="somenamespace" ttl=600 policy=usernamespace:iampolicy1
+vault write objectscale/roles/predefined/user1 namespace=somenamespace
+vault write objectscale/roles/predefined/user1 namespace=somenamespace ttl=600 policy=iampolicy1
+vault write objectscale/roles/predefined/user1 namespace=somenamespace ttl=600 policy=usernamespace:iampolicy1
 ```
 
 Attempts to configure a role where the user does not exist will succeed. However, when a credential is requested an error will be returned.
@@ -307,4 +307,3 @@ The configured TTL values for the role and plugin itself can be any value howeve
 | duration          | **int** - Requested assumed role session duration in seconds. If not set or set to 0, role configured default will be used | 3600 | No |
 | role_arn          | **string** - The ARN of the role to assume. The ARN for the role can be in the full form:<br/>urn:ecs:iam::*__namespace__*:*__policy__*<br/>or a shortened form:<br/>*__namespace__*:*__policy__* |  | Yes |
 | session_name      | **string** - Name for the assumed role session. If not set a default generated from the user and time of request will be used. | 0 | No |
-
