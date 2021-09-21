@@ -143,7 +143,7 @@ func (b *backend) pluginPeriod(ctx context.Context, req *logical.Request) error 
 			for ns := range namespaces {
 				userList, err := b.Conn.ListIAMUsers(ns, nil)
 				if err != nil {
-					b.Logger().Error("[pluginPeriod] Unable to list users in namespace %s: %s", ns, err)
+					b.Logger().Error(fmt.Sprintf("[pluginPeriod] Unable to list users in namespace %s: %s", ns, err))
 					continue
 				}
 				for _, user := range userList.Users {
@@ -152,7 +152,7 @@ func (b *backend) pluginPeriod(ctx context.Context, req *logical.Request) error 
 						// If the user name matches, we need to parse the expiration timestamp from the user name and compare it to the current time
 						expireTime, err := time.ParseInLocation(defaultPathCredsDynamicTimeFormat, result[0][1], time.Local)
 						if err != nil {
-							b.Logger().Error("[pluginPeriod] Unable to parse expiration time for user %s: %s", user.UserName, err)
+							b.Logger().Error(fmt.Sprintf("[pluginPeriod] Unable to parse expiration time for user %s: %s", user.UserName, err))
 							continue
 						}
 						// If expireTime is earlier than our current time then this user has expired
