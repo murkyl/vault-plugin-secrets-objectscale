@@ -251,8 +251,11 @@ vault token create -policy=objectscale-predefined-readcred-user1
 ## Plugin options
 ### Available paths
     /config/root
+    /config/info
+    /roles/dynamic/
     /roles/dynamic/<role_name>
     /creds/dynamic/<role_name>
+    /roles/predefined/
     /roles/predefined/<role_name>
     /creds/predefined/<role_name>
     /sts/predefined/<role_name>
