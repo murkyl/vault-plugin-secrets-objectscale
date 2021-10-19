@@ -100,6 +100,14 @@ func pathConfigInfo(b *backend) []*framework.Path {
 	}
 }
 
+func (b *backend) pathConfigRootInfo(ctx context.Context, req *logical.Request, _ *framework.FieldData) (*logical.Response, error) {
+	// Fill a key value struct with the stored values
+	kv := map[string]interface{}{
+		fieldConfigVersion: PluginVersion,
+	}
+	return &logical.Response{Data: kv}, nil
+}
+
 func (b *backend) pathConfigRootRead(ctx context.Context, req *logical.Request, _ *framework.FieldData) (*logical.Response, error) {
 	cfg, err := getCfgFromStorage(ctx, req.Storage)
 	if err != nil {
@@ -118,14 +126,6 @@ func (b *backend) pathConfigRootRead(ctx context.Context, req *logical.Request, 
 		fieldConfigTTLMax:         cfg.TTLMax,
 		fieldConfigUser:           cfg.User,
 		fieldConfigUsernamePrefix: cfg.UsernamePrefix,
-	}
-	return &logical.Response{Data: kv}, nil
-}
-
-func (b *backend) pathConfigRootInfo(ctx context.Context, req *logical.Request, _ *framework.FieldData) (*logical.Response, error) {
-	// Fill a key value struct with the stored values
-	kv := map[string]interface{}{
-		fieldConfigVersion:        PluginVersion,
 	}
 	return &logical.Response{Data: kv}, nil
 }
